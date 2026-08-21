@@ -1,0 +1,10 @@
+__pycache__/
+*.py[cod]
+.DS_Store
+.pytest_cache/
+.venv/
+/node_modules/
+
+# Local agent guidance and private research notes
+/AGENTS.md
+/.private/
