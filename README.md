@@ -2,13 +2,13 @@
 
 An independent research project exploring how an AI-assisted system can support observe, enter, hold, and exit decisions across trading days.
 
-> 這是一個個人股票決策系統研究專案，聚焦跨交易日的觀察、進場、持有與退出決策。此 repository 保存可公開的月度彙總資料，並以圖表和表格呈現長期研究變化。
+> 這是一個個人股票決策系統研究專案，聚焦跨交易日的觀察、進場、持有與退出決策。此 repository 只保存可公開的彙總報告與圖表，不保存內部驗證資料。
 
 ## Current status
 
 - Public revision: `research-v0.1`
 - Project stage: active research prototype
-- Primary analysis: monthly Reward change
+- Primary analysis: monthly net result, capital usage, and transaction costs
 - Historical evaluation: in progress
 - Live deployment: not supported
 - Profitability: not established
@@ -19,34 +19,33 @@ An independent research project exploring how an AI-assisted system can support 
 Observe -> Enter -> Hold -> Exit
 ```
 
-The current public analysis focuses on how aggregated Reward changes over time. Future reports may include public model-scale and training-data information when those fields are ready for safe publication.
-
 ## Research report
 
 - [Generated research report](REPORT.md)
-- [Monthly data format](reports/README.md)
+- [Report input and publication boundary](reports/README.md)
 
-Monthly JSON records are the source of truth. The report and ECharts SVG charts are generated from those records with:
+The private research system keeps canonical monthly validation results. Its exporter aggregates selected months in memory, removes private fields, and sends only a sanitized report payload to this repository's renderer. The renderer writes a Markdown summary and three static monthly charts:
 
-```bash
-npm install
-python3 scripts/build_report.py
+```text
+REPORT.md
+assets/charts/*.svg
 ```
+
+No copied monthly JSON or other intermediate data file is committed here. The public view intentionally uses only monthly coverage and financial aggregates: net result, gross buy notional, peak position capital, and transaction costs. Task outcomes, decisions, confidence values, Reward, and internal revision names never cross the public boundary.
 
 ## Repository structure
 
 ```text
-reports/monthly/       Sanitized monthly JSON records (source of truth)
 scripts/               Markdown builder and ECharts SVG renderer
 assets/charts/         Generated SVG charts displayed by REPORT.md
-REPORT.md              Generated complete research report
-reports/README.md      Monthly input format and comparison rules
+REPORT.md              Generated research report
+reports/README.md      Input boundary and comparison rules
 ```
 
 `AGENTS.md` and `.private/` are intentionally excluded from Git because they contain local working rules and planning notes.
 
 ## Public boundary
 
-This repository may contain aggregated Reward statistics, public system revisions, model parameter counts, and training-data volume summaries. It does not publish raw market data, individual stock decisions, exact strategy rules, model weights, credentials, or live-order capabilities.
+This repository may contain validation coverage and aggregate historical-simulation result, capital, and cost statistics. It does not publish task outcomes, decision probabilities, Reward, raw market data, individual stock decisions, exact strategy rules, model weights, credentials, internal paths, or live-order capabilities.
 
 Historical simulation is not actual execution. This project is provided for research and engineering discussion only and is not financial advice or a claim of future profitability.

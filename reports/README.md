@@ -1,60 +1,47 @@
-# Monthly Research Data
+# Report Input Boundary
 
-Each month is stored as one JSON file under `reports/monthly/`:
+`REPORT.md` and `assets/charts/*.svg` are generated from sanitized aggregate data supplied by the private validation project through standard input.
 
-```text
-reports/monthly/2026-08.json
-reports/monthly/2026-09.json
+This repository does not store a monthly JSON source of truth. Canonical validation results remain private; the public renderer receives only an in-memory allowlisted schema `1.2` payload and writes human-readable report artifacts.
+
+## Allowed monthly fields
+
+- Month and public result status
+- Validation-day and aggregate evaluation counts
+- Aggregate historical-simulation net result, gross buy notional, transaction costs, and peak position capital
+- Public revision, validation-protocol revision, and report limitations
+
+## Prohibited fields
+
+- Stock identifiers, task identifiers, source/task/order timestamps, or individual decisions; only the public report generation time is allowed
+- Task lifecycle outcomes, action/fill details, decision probabilities, or Reward
+- Internal model names, paths, run ids, source filenames, or logs
+- Exact features, thresholds, labels, Reward formula, architecture, or strategy rules
+- Raw market data, model weights, broker details, credentials, or live-order data
+
+## Comparison rules
+
+See [Research Reporting Workflow](WORKFLOW.md) for the monthly-first presentation. Each monthly entry includes Finding, Limitation, and Next step. Single-month charts omit the cumulative line. All money is labeled TWD; total purchase value, recorded peak position capital, total costs, and largest single-order cost remain distinct. Net result is already after recorded costs.
+
+- A month is the primary trend unit.
+- Validation and evaluation counts are summed, financial flows are summed, and capital or single-order maxima remain maxima.
+- Missing data is shown as unavailable, never converted to zero.
+- Periods spanning multiple internal revisions carry an explicit warning and are not described as one unchanged policy.
+- Historical simulation is not actual execution or evidence of future profitability.
+
+The renderer is normally invoked by the private exporter. It requires a sanitized payload on standard input:
+
+```bash
+python3 scripts/build_report.py --stdin
 ```
 
-These JSON files are the source of truth for the generated report and charts. Do not edit `REPORT.md` or generated charts by hand.
+For layout review with non-evidence data, add `--preview`. This writes only to the ignored `.private/report-preview/` directory and never replaces the formal report.
 
-## Monthly record
+Every generated Markdown file and SVG must receive a semantic confidentiality review before commit or publication.
+Charts are rendered in a temporary directory and replace the managed SVG set only after the renderer returns every expected file.
 
-```json
-{
-  "schema_version": "1.0",
-  "report_month": "YYYY-MM",
-  "system_revision": "research-v0.1",
-  "status": "insufficient_data",
-  "reward_definition": {
-    "version": "reward-v1",
-    "higher_is_better": true,
-    "comparable_group": "reward-v1"
-  },
-  "reward": {
-    "sample_count": 0,
-    "mean": null,
-    "median": null,
-    "standard_deviation": null,
-    "minimum": null,
-    "maximum": null,
-    "p25": null,
-    "p75": null,
-    "positive_rate": null
-  },
-  "model": {
-    "public_revision": null,
-    "parameter_count": null,
-    "trainable_parameter_count": null
-  },
-  "training_data": {
-    "sample_count": null,
-    "size_bytes": null
-  },
-  "notes": []
-}
-```
+## Optional Local Monthly Sync
 
-## Rules
+The private monthly-validation page has an explicit opt-in switch. Complete decision-only months may be exported; shortened windows, missing results, or unfinished tasks are not automatically exported. Negative months remain eligible. No automatic commit, push, or publication occurs.
 
-- `report_month` must match the filename.
-- `reward.sample_count` is the number of observations represented by the Reward statistics.
-- Missing values use `null`, not `0`.
-- `positive_rate` uses the range `0` to `1`.
-- Reward values are compared only within the same `comparable_group`.
-- A change to the Reward meaning requires a new Reward version or comparison group.
-- Model and training-data fields are optional analysis metadata; they must remain aggregated and safe to publish.
-- Notes may explain monthly changes and limitations, but must not contain private strategy details or individual decisions.
-
-Run `python scripts/build_report.py` after adding or changing a month.
+`build_report.py --stdin --output-subdir reports/intraday-r1` (or a multi-day series) writes independently rendered Markdown/SVG under that series. The root report becomes a generated series index. Declared configuration revisions remain separate; they are not proof that weight files or market samples are identical. Prior root indexes are retained privately. Only aggregate allowlisted input crosses the boundary; private source selection and correction records stay outside this repository.

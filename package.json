@@ -5,7 +5,7 @@
   "description": "Static ECharts renderer for the generated research report.",
   "type": "module",
   "scripts": {
-    "build": "python3 scripts/build_report.py"
+    "build": "python3 scripts/build_report.py --stdin"
   },
   "dependencies": {
     "echarts": "6.1.0"

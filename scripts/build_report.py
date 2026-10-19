@@ -1,44 +1,43 @@
 #!/usr/bin/env python3
-"""Build the public Markdown report and charts from monthly JSON records."""
+"""Build the public Markdown report from sanitized aggregate data on stdin."""
 
 from __future__ import annotations
 
+import argparse
 import json
 import math
+import os
 import re
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 from typing import Any
 
 
 ROOT = Path(__file__).resolve().parents[1]
-MONTHLY_DIR = ROOT / "reports" / "monthly"
 REPORT_PATH = ROOT / "REPORT.md"
 CHARTS_DIR = ROOT / "assets" / "charts"
+PREVIEW_ROOT = ROOT / ".private" / "report-preview"
 
-RESULT_STATUSES = {
-    "improved",
-    "stable",
-    "regressed",
-    "inconclusive",
-    "insufficient_data",
-    "failed",
+RESULT_STATUSES = {"validated", "skipped", "partial", "failed"}
+BASE_CHARTS = {
+    "monthly-net-profit.svg",
+    "capital-usage.svg",
+    "transaction-cost.svg",
 }
-REWARD_VALUE_FIELDS = (
-    "mean",
-    "median",
-    "standard_deviation",
-    "minimum",
-    "maximum",
-    "p25",
-    "p75",
-    "positive_rate",
-)
-KNOWN_CHARTS = {
+KNOWN_CHARTS = BASE_CHARTS
+MANAGED_CHARTS = KNOWN_CHARTS | {
+    "evaluation-volume.svg",
+    "task-days.svg",
+    "trade-status.svg",
+    "financial-outcome.svg",
     "reward-trend.svg",
     "reward-sample-count.svg",
     "reward-positive-rate.svg",
+    "task-completion.svg",
+    "buy-probability-stability.svg",
+    "sell-probability-stability.svg",
 }
 
 
@@ -50,413 +49,429 @@ def _is_number(value: Any) -> bool:
     )
 
 
-def _require_non_negative_int(value: Any, field: str, errors: list[str]) -> None:
-    if not isinstance(value, int) or isinstance(value, bool) or value < 0:
-        errors.append(f"{field} must be a non-negative integer")
-
-
-def _validate_optional_non_negative_int(value: Any, field: str, errors: list[str]) -> None:
-    if value is not None:
-        _require_non_negative_int(value, field, errors)
-
-
-def validate_record(data: Any, source: Path) -> list[str]:
-    """Return human-readable validation errors for one monthly record."""
-    prefix = source.name
-    if not isinstance(data, dict):
-        return [f"{prefix}: record must be a JSON object"]
-
+def validate_payload(payload: Any) -> list[str]:
+    """Return validation errors for the public, aggregate-only report contract."""
+    if not isinstance(payload, dict):
+        return ["report payload must be an object"]
     required = {
         "schema_version",
-        "report_month",
-        "system_revision",
-        "status",
-        "reward_definition",
-        "reward",
+        "generated_at",
+        "public_revision",
+        "validation_protocol",
+        "period",
+        "months",
+        "warnings",
     }
-    allowed = required | {"model", "training_data", "notes"}
     errors: list[str] = []
-
-    missing = sorted(required - set(data))
-    unknown = sorted(set(data) - allowed)
+    missing = sorted(required - set(payload))
+    unknown = sorted(set(payload) - required)
     if missing:
-        errors.append(f"{prefix}: missing fields: {', '.join(missing)}")
+        errors.append(f"missing fields: {', '.join(missing)}")
     if unknown:
-        errors.append(f"{prefix}: unknown fields: {', '.join(unknown)}")
+        errors.append(f"unknown fields: {', '.join(unknown)}")
     if missing:
         return errors
-
-    if data["schema_version"] != "1.0":
-        errors.append(f"{prefix}: schema_version must be 1.0")
-    expected_month = source.stem
-    if data["report_month"] != expected_month:
-        errors.append(f"{prefix}: report_month must match filename ({expected_month})")
-    if not isinstance(data["report_month"], str) or not re.fullmatch(
-        r"\d{4}-(0[1-9]|1[0-2])", data["report_month"]
+    if payload["schema_version"] != "1.2":
+        errors.append("schema_version must be 1.2")
+    if not isinstance(payload["public_revision"], str) or not payload["public_revision"].strip():
+        errors.append("public_revision must be a non-empty string")
+    if not isinstance(payload["generated_at"], str) or not payload["generated_at"].strip():
+        errors.append("generated_at must be a non-empty string")
+    if (
+        not isinstance(payload["validation_protocol"], str)
+        or not payload["validation_protocol"].strip()
     ):
-        errors.append(f"{prefix}: report_month must use YYYY-MM with a valid month")
-    if not isinstance(data["system_revision"], str) or not data["system_revision"].strip():
-        errors.append(f"{prefix}: system_revision must be a non-empty string")
-    if data["status"] not in RESULT_STATUSES:
-        errors.append(f"{prefix}: invalid status {data['status']!r}")
+        errors.append("validation_protocol must be a non-empty string")
 
-    definition = data["reward_definition"]
-    definition_fields = {"version", "higher_is_better", "comparable_group"}
-    if not isinstance(definition, dict) or set(definition) != definition_fields:
-        errors.append(f"{prefix}: reward_definition fields must be {sorted(definition_fields)}")
-    else:
-        for field in ("version", "comparable_group"):
-            if not isinstance(definition[field], str) or not definition[field].strip():
-                errors.append(f"{prefix}: reward_definition.{field} must be a non-empty string")
-        if not isinstance(definition["higher_is_better"], bool):
-            errors.append(f"{prefix}: reward_definition.higher_is_better must be boolean")
+    period = payload["period"]
+    if not isinstance(period, dict) or set(period) != {
+        "start_month",
+        "end_month",
+        "month_count",
+    }:
+        errors.append("period fields are invalid")
 
-    reward = data["reward"]
-    reward_fields = {"sample_count", *REWARD_VALUE_FIELDS}
-    if not isinstance(reward, dict) or set(reward) != reward_fields:
-        errors.append(f"{prefix}: reward fields must be {sorted(reward_fields)}")
-    else:
-        _require_non_negative_int(reward["sample_count"], "reward.sample_count", errors)
-        for field in REWARD_VALUE_FIELDS:
-            value = reward[field]
-            if value is not None and not _is_number(value):
-                errors.append(f"{prefix}: reward.{field} must be a finite number or null")
-        positive_rate = reward["positive_rate"]
-        if _is_number(positive_rate) and not 0 <= float(positive_rate) <= 1:
-            errors.append(f"{prefix}: reward.positive_rate must be between 0 and 1")
-        sample_count = reward["sample_count"]
-        if isinstance(sample_count, int) and not isinstance(sample_count, bool):
-            present_values = [reward[field] for field in REWARD_VALUE_FIELDS]
-            if sample_count == 0 and any(value is not None for value in present_values):
-                errors.append(f"{prefix}: Reward statistics must be null when sample_count is 0")
-            if sample_count > 0 and any(value is None for value in present_values):
-                errors.append(f"{prefix}: all Reward statistics are required when sample_count is positive")
-        if _is_number(reward["standard_deviation"]) and reward["standard_deviation"] < 0:
-            errors.append(f"{prefix}: reward.standard_deviation must be non-negative")
-        ordered_values = [
-            reward["minimum"],
-            reward["p25"],
-            reward["median"],
-            reward["p75"],
-            reward["maximum"],
-        ]
-        if all(_is_number(value) for value in ordered_values):
-            if ordered_values != sorted(ordered_values):
-                errors.append(f"{prefix}: reward summary must satisfy minimum <= p25 <= median <= p75 <= maximum")
-
-    model = data.get("model")
-    if model is not None:
-        model_fields = {"public_revision", "parameter_count", "trainable_parameter_count"}
-        if not isinstance(model, dict) or set(model) != model_fields:
-            errors.append(f"{prefix}: model fields must be {sorted(model_fields)}")
+    months = payload["months"]
+    if not isinstance(months, list) or not months:
+        errors.append("months must be a non-empty list")
+        return errors
+    required_month_fields = {
+        "month",
+        "status",
+        "validation_days",
+        "evaluation_count",
+        "total_transaction_cost",
+        "max_order_transaction_cost",
+        "realized_net_profit",
+        "buy_notional",
+        "max_position_capital",
+    }
+    seen_months = set()
+    for index, item in enumerate(months):
+        prefix = f"months[{index}]"
+        if not isinstance(item, dict):
+            errors.append(f"{prefix} fields are invalid")
+            continue
+        item_fields = set(item)
+        month = item.get("month")
+        if not isinstance(month, str) or len(month) != 7 or month[4] != "-":
+            errors.append(f"{prefix}.month must use YYYY-MM")
+        elif month in seen_months:
+            errors.append(f"duplicate month: {month}")
         else:
-            public_revision = model["public_revision"]
-            if public_revision is not None and (
-                not isinstance(public_revision, str) or not public_revision.strip()
-            ):
-                errors.append(f"{prefix}: model.public_revision must be a non-empty string or null")
-            _validate_optional_non_negative_int(model["parameter_count"], "model.parameter_count", errors)
-            _validate_optional_non_negative_int(
-                model["trainable_parameter_count"], "model.trainable_parameter_count", errors
-            )
-            if (
-                isinstance(model["parameter_count"], int)
-                and isinstance(model["trainable_parameter_count"], int)
-                and model["trainable_parameter_count"] > model["parameter_count"]
-            ):
-                errors.append(f"{prefix}: trainable parameters cannot exceed total parameters")
+            seen_months.add(month)
+        if item_fields != required_month_fields:
+            errors.append(f"{prefix} fields are invalid")
+            continue
+        if item["status"] not in RESULT_STATUSES:
+            errors.append(f"{prefix}.status is invalid")
+        for field in (
+            "validation_days",
+            "evaluation_count",
+        ):
+            value = item[field]
+            if not isinstance(value, int) or isinstance(value, bool) or value < 0:
+                errors.append(f"{prefix}.{field} must be a non-negative integer")
+        for field in (
+            "total_transaction_cost",
+            "max_order_transaction_cost",
+            "realized_net_profit",
+            "max_position_capital",
+            "buy_notional",
+        ):
+            if item[field] is not None and not _is_number(item[field]):
+                errors.append(f"{prefix}.{field} must be finite or null")
 
-    training_data = data.get("training_data")
-    if training_data is not None:
-        training_fields = {"sample_count", "size_bytes"}
-        if not isinstance(training_data, dict) or set(training_data) != training_fields:
-            errors.append(f"{prefix}: training_data fields must be {sorted(training_fields)}")
-        else:
-            _validate_optional_non_negative_int(
-                training_data["sample_count"], "training_data.sample_count", errors
-            )
-            _validate_optional_non_negative_int(
-                training_data["size_bytes"], "training_data.size_bytes", errors
-            )
-
-    notes = data.get("notes")
-    if notes is not None and (
-        not isinstance(notes, list) or any(not isinstance(note, str) for note in notes)
+    sorted_months = sorted(seen_months)
+    if isinstance(period, dict) and sorted_months:
+        if period.get("start_month") != sorted_months[0]:
+            errors.append("period.start_month does not match months")
+        if period.get("end_month") != sorted_months[-1]:
+            errors.append("period.end_month does not match months")
+        if period.get("month_count") != len(months):
+            errors.append("period.month_count does not match months")
+    if not isinstance(payload["warnings"], list) or any(
+        not isinstance(item, str) for item in payload["warnings"]
     ):
-        errors.append(f"{prefix}: notes must be a list of strings")
+        errors.append("warnings must be a list of strings")
     return errors
 
 
-def load_records() -> list[dict[str, Any]]:
-    MONTHLY_DIR.mkdir(parents=True, exist_ok=True)
-    records: list[dict[str, Any]] = []
-    errors: list[str] = []
-    for path in sorted(MONTHLY_DIR.glob("*.json")):
-        try:
-            data = json.loads(path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError) as exc:
-            errors.append(f"{path.name}: cannot read JSON: {exc}")
-            continue
-        errors.extend(validate_record(data, path))
-        records.append(data)
-    if errors:
-        raise ValueError("Invalid monthly research data:\n- " + "\n- ".join(errors))
-    records.sort(key=lambda item: item["report_month"])
-    group_definitions: dict[str, tuple[str, bool]] = {}
-    for record in records:
-        definition = record["reward_definition"]
-        group = definition["comparable_group"]
-        signature = (definition["version"], definition["higher_is_better"])
-        previous = group_definitions.setdefault(group, signature)
-        if previous != signature:
-            raise ValueError(
-                f"Comparable group {group!r} uses inconsistent Reward definitions: "
-                f"{previous!r} and {signature!r}"
-            )
-    return records
-
-
-def _format_number(value: Any, digits: int = 4) -> str:
-    if not _is_number(value):
-        return "—"
-    return f"{float(value):.{digits}f}"
-
-
-def _format_percent(value: Any) -> str:
-    if not _is_number(value):
-        return "—"
-    return f"{float(value) * 100:.1f}%"
-
-
-def _format_integer(value: Any) -> str:
-    if not isinstance(value, int) or isinstance(value, bool):
-        return "—"
-    return f"{value:,}"
-
-
-def _format_bytes(value: Any) -> str:
-    if not isinstance(value, int) or isinstance(value, bool):
-        return "—"
-    size = float(value)
-    for unit in ("B", "KiB", "MiB", "GiB", "TiB"):
-        if size < 1024 or unit == "TiB":
-            return f"{size:.1f} {unit}"
-        size /= 1024
-    return "—"
-
-
-def _mean_delta(records: list[dict[str, Any]], index: int) -> str:
-    current = records[index]
-    current_mean = current["reward"]["mean"]
-    current_group = current["reward_definition"]["comparable_group"]
-    if not _is_number(current_mean):
-        return "—"
-    for previous in reversed(records[:index]):
-        if previous["reward_definition"]["comparable_group"] != current_group:
-            continue
-        previous_mean = previous["reward"]["mean"]
-        if _is_number(previous_mean):
-            return f"{float(current_mean) - float(previous_mean):+.4f}"
-    return "—"
-
-
-def build_charts(records: list[dict[str, Any]]) -> set[str]:
-    CHARTS_DIR.mkdir(parents=True, exist_ok=True)
-    if not records:
-        for name in KNOWN_CHARTS:
-            path = CHARTS_DIR / name
-            if path.exists():
-                path.unlink()
-        return set()
-
+def build_charts(
+    payload: dict[str, Any],
+    *,
+    charts_dir: Path = CHARTS_DIR,
+) -> set[str]:
+    charts_dir.parent.mkdir(parents=True, exist_ok=True)
     renderer = ROOT / "scripts" / "render_charts.mjs"
-    try:
-        result = subprocess.run(
-            ["node", str(renderer), str(CHARTS_DIR)],
-            input=json.dumps(records, ensure_ascii=False),
-            text=True,
-            capture_output=True,
-            check=False,
+    with tempfile.TemporaryDirectory(
+        prefix=".validation-charts-",
+        dir=charts_dir.parent,
+    ) as temporary_directory:
+        temporary_root = Path(temporary_directory)
+        try:
+            result = subprocess.run(
+                ["node", str(renderer), str(temporary_root)],
+                input=json.dumps(payload, ensure_ascii=True, allow_nan=False),
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+        except FileNotFoundError as exc:
+            raise RuntimeError("Node.js is required to render the report charts.") from exc
+        if result.returncode != 0:
+            detail = result.stderr.strip() or "unknown ECharts renderer error"
+            raise RuntimeError(
+                f"Chart rendering failed. Run `npm install` first.\n{detail}"
+            )
+        try:
+            generated = set(json.loads(result.stdout))
+        except (json.JSONDecodeError, TypeError) as exc:
+            raise RuntimeError("ECharts renderer returned an invalid result.") from exc
+        expected_charts = BASE_CHARTS
+        if generated != expected_charts:
+            raise RuntimeError(
+                "ECharts renderer returned an incomplete or unexpected file set: "
+                f"{sorted(generated)}"
+            )
+        missing_files = sorted(
+            name for name in generated if not (temporary_root / name).is_file()
         )
-    except FileNotFoundError as exc:
-        raise RuntimeError("Node.js is required to render ECharts SVG files.") from exc
+        if missing_files:
+            raise RuntimeError(
+                f"ECharts renderer did not write declared files: {missing_files}"
+            )
+        charts_dir.mkdir(parents=True, exist_ok=True)
+        for name in sorted(generated):
+            os.replace(temporary_root / name, charts_dir / name)
 
-    if result.returncode != 0:
-        detail = result.stderr.strip() or "unknown ECharts renderer error"
-        raise RuntimeError(f"Chart rendering failed. Run `npm install` first.\n{detail}")
-    try:
-        generated = set(json.loads(result.stdout))
-    except (json.JSONDecodeError, TypeError) as exc:
-        raise RuntimeError("ECharts renderer returned an invalid result.") from exc
-    if not generated <= KNOWN_CHARTS:
-        raise RuntimeError(f"ECharts renderer returned unexpected files: {sorted(generated - KNOWN_CHARTS)}")
-
-    for name in KNOWN_CHARTS - generated:
-        path = CHARTS_DIR / name
+    for name in MANAGED_CHARTS - generated:
+        path = charts_dir / name
         if path.exists():
             path.unlink()
     return generated
 
 
-def _weighted_reward_summary(records: list[dict[str, Any]]) -> tuple[int, float | None, str | None]:
-    if not records:
-        return 0, None, None
-    group = records[-1]["reward_definition"]["comparable_group"]
-    relevant = [
-        record
-        for record in records
-        if record["reward_definition"]["comparable_group"] == group
-        and record["reward"]["sample_count"] > 0
-        and _is_number(record["reward"]["mean"])
-    ]
-    total_count = sum(record["reward"]["sample_count"] for record in relevant)
-    if total_count == 0:
-        return 0, None, group
-    weighted_mean = sum(
-        record["reward"]["sample_count"] * float(record["reward"]["mean"])
-        for record in relevant
-    ) / total_count
-    return total_count, weighted_mean, group
+def _format_integer(value: Any) -> str:
+    return "—" if not isinstance(value, int) or isinstance(value, bool) else f"{value:,}"
 
 
-def build_markdown(records: list[dict[str, Any]], charts: set[str]) -> str:
+def _format_money(value: Any) -> str:
+    return "—" if not _is_number(value) else f"TWD {float(value):,.0f}"
+
+
+def _complete_sum(values: list[Any]) -> float | None:
+    if not values or any(not _is_number(value) for value in values):
+        return None
+    return sum(float(value) for value in values)
+
+
+def _available_max(values: list[Any]) -> float | None:
+    available = [float(value) for value in values if _is_number(value)]
+    return max(available) if available else None
+
+
+def build_markdown(
+    payload: dict[str, Any],
+    charts: set[str],
+    *,
+    preview: bool = False,
+) -> str:
+    months = sorted(payload["months"], key=lambda item: item["month"])
+    single_month = len(months) == 1
+    period = payload["period"]
+    validation_days = sum(item["validation_days"] for item in months)
+    evaluation_count = sum(item["evaluation_count"] for item in months)
+    net_profit = _complete_sum([item["realized_net_profit"] for item in months])
+    transaction_cost = _complete_sum(
+        [item["total_transaction_cost"] for item in months]
+    )
+    buy_notional = _complete_sum([item["buy_notional"] for item in months])
+    peak_capital = _available_max(
+        [item["max_position_capital"] for item in months]
+    )
+    max_order_cost = _available_max(
+        [item["max_order_transaction_cost"] for item in months]
+    )
+    heading = (
+        "# Layout Preview: Monthly Research Report"
+        if preview
+        else "# Stock Decision Research Report"
+    )
     lines = [
-        "# Stock Decision Research Report",
-        "",
-        "> Generated from monthly JSON records. Do not edit this file manually.",
+        heading,
         "",
     ]
-    if not records:
+    if preview:
         lines.extend([
-            "## Status",
-            "",
-            "No monthly research records have been added yet.",
+            "> **LAYOUT PREVIEW / SYNTHETIC DATA.** Values on this page are invented "
+            "for visual review and are not research evidence.",
             "",
         ])
-        return "\n".join(lines)
-
-    latest = records[-1]
-    total_count, weighted_mean, group = _weighted_reward_summary(records)
     lines.extend([
-        "## Latest status",
+        "> Historical-simulation aggregates only. This is not actual execution, "
+        "financial advice, or evidence of future profitability.",
         "",
-        f"- Latest month: `{latest['report_month']}`",
-        f"- System revision: `{latest['system_revision']}`",
-        f"- Result status: `{latest['status']}`",
-        f"- Reward definition: `{latest['reward_definition']['version']}`",
-        f"- Comparable group: `{latest['reward_definition']['comparable_group']}`",
-        f"- Latest Reward samples: {_format_integer(latest['reward']['sample_count'])}",
-        f"- Latest mean Reward: {_format_number(latest['reward']['mean'])}",
+        "## This Month" if single_month else "## Research Snapshot",
         "",
-        "## Comparable-history summary",
+        "| Period | Public revision | Protocol | Months | Validation days | Evaluations |",
+        "|---|---|---|---:|---:|---:|",
+        "| "
+        + " | ".join([
+            f"{period['start_month']} to {period['end_month']}",
+            f"`{payload['public_revision']}`",
+            f"`{payload['validation_protocol']}`",
+            _format_integer(period["month_count"]),
+            _format_integer(validation_days),
+            _format_integer(evaluation_count),
+        ])
+        + " |",
         "",
-        f"The current comparison group is `{group}`. Statistics from other Reward definitions are not merged into this summary.",
-        "",
-        f"- Comparable Reward samples: {_format_integer(total_count)}",
-        f"- Sample-weighted mean Reward: {_format_number(weighted_mean)}",
+        "| Net result after costs | Total purchase value | Recorded peak position capital | Total transaction costs | Largest single-order cost |",
+        "|---:|---:|---:|---:|---:|",
+        "| "
+        + " | ".join([
+            _format_money(net_profit),
+            _format_money(buy_notional),
+            _format_money(peak_capital),
+            _format_money(transaction_cost),
+            _format_money(max_order_cost),
+        ])
+        + " |",
         "",
     ])
 
-    if "reward-trend.svg" in charts:
+    lines.extend([
+        "All monetary amounts are in TWD. Total purchase value is the sum of purchases "
+        "during the period; it is not starting capital. Recorded peak position capital "
+        "is the maximum capital value supplied by the evaluation, not an assumed "
+        "portfolio-wide funding requirement. Total costs and the largest single-order "
+        "cost are distinct measures. Net result already includes recorded costs; do "
+        "not subtract them again.",
+        "",
+    ])
+    if single_month:
+        lines.extend(["This first monthly observation does not establish a trend. "
+                      "The report focuses on the month's result, costs, and research observations.", ""])
+    lines.extend(["## Monthly Research Notes", ""])
+    for item in months:
         lines.extend([
-            "## Reward trend",
-            "",
-            "![Monthly Reward trend](assets/charts/reward-trend.svg)",
-            "",
+            f"### {item['month']}", "",
+            f"- **Finding:** Recorded net result after costs: {_format_money(item['realized_net_profit'])}; "
+            f"recorded transaction costs: {_format_money(item['total_transaction_cost'])}.",
+            f"- **Limitation:** This month's summary contains {item['evaluation_count']:,} evaluations "
+            f"with status `{item['status']}`. These aggregates alone do not establish sample "
+            "representativeness or persistent performance. See the report limitations for context.",
+            "- **Next step:** Compare the next available month under a compatible revision and "
+            "protocol, tracking net result, costs, and recorded capital together.", "",
         ])
-    if "reward-sample-count.svg" in charts:
+
+    chart_prefix = "assets/charts"
+    chart_sections = [
+        (
+            "monthly-net-profit.svg",
+            "## 1. Monthly Net Result",
+            "Net result after recorded costs for this month."
+            if single_month else "Compare monthly net results after recorded costs across compatible months.",
+            "Monthly net result" if single_month else "Monthly net result and cumulative net result",
+        ),
+        (
+            "capital-usage.svg",
+            "## 2. Monthly Capital Usage",
+            "Total purchase value and recorded peak position capital, shown on the same TWD scale. "
+            "Purchase value measures activity, not starting capital.",
+            "Total purchase value and recorded peak position capital in TWD",
+        ),
+        (
+            "transaction-cost.svg",
+            "## 3. Monthly Transaction Costs",
+            "How much did recorded transaction costs consume, and how large was the "
+            "largest single-order cost each month?",
+            "Monthly total transaction costs and maximum single-order cost",
+        ),
+    ]
+    for chart_name, section_title, description, alt_text in chart_sections:
+        if chart_name not in charts:
+            continue
         lines.extend([
-            "## Evaluation volume",
+            section_title,
             "",
-            "![Monthly Reward sample count](assets/charts/reward-sample-count.svg)",
+            description,
             "",
-        ])
-    if "reward-positive-rate.svg" in charts:
-        lines.extend([
-            "## Positive Reward rate",
-            "",
-            "![Monthly positive Reward rate](assets/charts/reward-positive-rate.svg)",
+            f"![{alt_text}]({chart_prefix}/{chart_name})",
             "",
         ])
 
     lines.extend([
-        "## Monthly Reward table",
+        "## Monthly Ledger",
         "",
-        "| Month | Status | Reward group | Samples | Mean | Median | P25 | P75 | Positive | Δ Mean |",
-        "|---|---|---|---:|---:|---:|---:|---:|---:|---:|",
+        "| Month | Status | Days | Evaluations | Net result after costs | Total purchase value | Recorded peak position capital | Total costs | Largest single-order cost |",
+        "|---|---|---:|---:|---:|---:|---:|---:|---:|",
     ])
-    for index, record in enumerate(records):
-        reward = record["reward"]
-        lines.append(
-            "| "
-            + " | ".join([
-                record["report_month"],
-                record["status"],
-                record["reward_definition"]["comparable_group"],
-                _format_integer(reward["sample_count"]),
-                _format_number(reward["mean"]),
-                _format_number(reward["median"]),
-                _format_number(reward["p25"]),
-                _format_number(reward["p75"]),
-                _format_percent(reward["positive_rate"]),
-                _mean_delta(records, index),
-            ])
-            + " |"
-        )
+    for item in months:
+        row = [
+            item["month"],
+            item["status"],
+            _format_integer(item["validation_days"]),
+            _format_integer(item["evaluation_count"]),
+            _format_money(item["realized_net_profit"]),
+            _format_money(item["buy_notional"]),
+            _format_money(item["max_position_capital"]),
+            _format_money(item["total_transaction_cost"]),
+            _format_money(item["max_order_transaction_cost"]),
+        ]
+        lines.append("| " + " | ".join(row) + " |")
     lines.append("")
-
-    if any(record.get("model") or record.get("training_data") for record in records):
-        lines.extend([
-            "## Model and training-data information",
-            "",
-            "| Month | Model revision | Parameters | Trainable parameters | Training samples | Training data size |",
-            "|---|---|---:|---:|---:|---:|",
-        ])
-        for record in records:
-            model = record.get("model") or {}
-            training = record.get("training_data") or {}
-            lines.append(
-                "| "
-                + " | ".join([
-                    record["report_month"],
-                    model.get("public_revision") or "—",
-                    _format_integer(model.get("parameter_count")),
-                    _format_integer(model.get("trainable_parameter_count")),
-                    _format_integer(training.get("sample_count")),
-                    _format_bytes(training.get("size_bytes")),
-                ])
-                + " |"
-            )
+    if payload["warnings"]:
+        lines.extend(["## Limitations", ""])
+        lines.extend(f"- {warning}" for warning in payload["warnings"])
         lines.append("")
-
-    noted_records = [record for record in records if record.get("notes")]
-    if noted_records:
-        lines.extend(["## Monthly notes", ""])
-        for record in noted_records:
-            lines.append(f"### {record['report_month']}")
-            lines.append("")
-            for note in record["notes"]:
-                lines.append(f"- {note}")
-            lines.append("")
-
     lines.extend([
         "## Interpretation boundary",
         "",
-        "Reward comparisons are valid only within the same comparison group. Sample volume, Reward-definition changes, and missing values must be considered before interpreting a trend. Historical simulation is not actual execution or evidence of future profitability.",
+        "Net result, notional, capital, and transaction costs are historical-simulation "
+        "measurements. Month-to-month comparisons are meaningful only when the public "
+        "revision and validation protocol remain comparable. Missing values are shown "
+        "as unavailable rather than zero.",
         "",
     ])
-    return "\n".join(lines)
+    return "\n".join(lines).rstrip()
 
 
-def main() -> int:
+def _atomic_write(path: Path, text: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    descriptor, temporary_name = tempfile.mkstemp(
+        prefix=f".{path.name}.", suffix=".tmp", dir=path.parent, text=True
+    )
     try:
-        records = load_records()
-        charts = build_charts(records)
-        REPORT_PATH.write_text(build_markdown(records, charts), encoding="utf-8")
-    except (OSError, RuntimeError, ValueError) as exc:
+        with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+            handle.write(text)
+            handle.write("\n")
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary_name, path)
+    finally:
+        if os.path.exists(temporary_name):
+            os.unlink(temporary_name)
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--stdin",
+        action="store_true",
+        help="Read one sanitized aggregate report payload from standard input.",
+    )
+    parser.add_argument(
+        "--preview",
+        action="store_true",
+        help=(
+            "Write an ignored layout preview under .private/report-preview instead "
+            "of replacing the formal report."
+        ),
+    )
+    parser.add_argument("--output-subdir", help="Managed local research series directory.")
+    args = parser.parse_args(argv)
+    if not args.stdin:
+        parser.error("--stdin is required; public monthly JSON files are not used.")
+    try:
+        payload = json.load(sys.stdin)
+        errors = validate_payload(payload)
+        if errors:
+            raise ValueError("Invalid research report payload:\n- " + "\n- ".join(errors))
+        if args.output_subdir and (args.preview or re.fullmatch(r"reports/(intraday|multi-day)-r[1-9][0-9]*", args.output_subdir) is None):
+            raise ValueError("Invalid research series output directory")
+        output_root = ROOT / args.output_subdir if args.output_subdir else ROOT
+        if not output_root.resolve().is_relative_to(ROOT.resolve()):
+            raise ValueError("Research output must remain inside this repository")
+        report_path = PREVIEW_ROOT / "REPORT.md" if args.preview else output_root / "REPORT.md"
+        charts_dir = (
+            PREVIEW_ROOT / "assets" / "charts" if args.preview else output_root / "assets" / "charts"
+        )
+        charts = build_charts(payload, charts_dir=charts_dir)
+        _atomic_write(
+            report_path,
+            build_markdown(payload, charts, preview=args.preview),
+        )
+        if args.output_subdir:
+            lines = ["# Stock Decision Research", "", "> Local historical-simulation summaries. Not actual execution or evidence of future profitability.", "", "## Research Series", "", "| Series | Report |", "| --- | --- |"]
+            for path in sorted((ROOT / "reports").glob("*/REPORT.md")):
+                series = path.parent.name
+                if re.fullmatch(r"(intraday|multi-day)-r[1-9][0-9]*", series):
+                    lines.append(f"| {series} | [Charts and monthly tables]({path.relative_to(ROOT).as_posix()}) |")
+            lines.extend(["", "Each series uses a separate declared configuration revision. Do not combine overlapping months across series.", "", "Only explicitly selected, complete decision-validation months are included. Omitted months are not zero-profit months.", "", "Same-series monthly corrections replace the selected month; source revision history remains in the private implementation.", "", "Generated locally; no automatic commit, push, or publication.", ""])
+            if REPORT_PATH.exists():
+                from datetime import datetime
+                archive = ROOT / ".private" / "report-history" / (datetime.now().strftime("%Y%m%d-%H%M%S-%f") + ".md")
+                _atomic_write(archive, REPORT_PATH.read_text(encoding="utf-8"))
+            _atomic_write(REPORT_PATH, "\n".join(lines))
+    except (OSError, RuntimeError, ValueError, json.JSONDecodeError) as exc:
         print(f"Report generation failed: {exc}", file=sys.stderr)
         return 1
-    print(f"Generated {REPORT_PATH.relative_to(ROOT)} from {len(records)} monthly record(s).")
+    print(
+        f"Generated {report_path.relative_to(ROOT)} from "
+        f"{len(payload['months'])} sanitized month(s)."
+    )
     return 0
 
 
