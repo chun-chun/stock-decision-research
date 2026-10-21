@@ -254,9 +254,9 @@ def build_markdown(
         [item["max_order_transaction_cost"] for item in months]
     )
     heading = (
-        "# Layout Preview: Monthly Research Report"
+        "# Layout Preview: Stock Decision System Results"
         if preview
-        else "# Stock Decision Research Report"
+        else "# Stock Decision System — Results"
     )
     lines = [
         heading,
@@ -269,23 +269,9 @@ def build_markdown(
             "",
         ])
     lines.extend([
-        "> Historical-simulation aggregates only. This is not actual execution, "
-        "financial advice, or evidence of future profitability.",
+        "Results from historical replay of cross-day stock decisions, including recorded transaction costs.",
         "",
-        "## This Month" if single_month else "## Research Snapshot",
-        "",
-        "| Period | Public revision | Protocol | Months | Validation days | Evaluations |",
-        "|---|---|---|---:|---:|---:|",
-        "| "
-        + " | ".join([
-            f"{period['start_month']} to {period['end_month']}",
-            f"`{payload['public_revision']}`",
-            f"`{payload['validation_protocol']}`",
-            _format_integer(period["month_count"]),
-            _format_integer(validation_days),
-            _format_integer(evaluation_count),
-        ])
-        + " |",
+        f"## {months[0]['month']} Results" if single_month else "## Results Overview",
         "",
         "| Net result after costs | Total purchase value | Recorded peak position capital | Total transaction costs | Largest single-order cost |",
         "|---:|---:|---:|---:|---:|",
@@ -301,7 +287,7 @@ def build_markdown(
         "",
     ])
 
-    lines.extend([
+    definitions = [
         "All monetary amounts are in TWD. Total purchase value is the sum of purchases "
         "during the period; it is not starting capital. Recorded peak position capital "
         "is the maximum capital value supplied by the evaluation, not an assumed "
@@ -309,13 +295,13 @@ def build_markdown(
         "cost are distinct measures. Net result already includes recorded costs; do "
         "not subtract them again.",
         "",
-    ])
+    ]
     if single_month:
-        lines.extend(["This first monthly observation does not establish a trend. "
-                      "The report focuses on the month's result, costs, and research observations.", ""])
-    lines.extend(["## Monthly Research Notes", ""])
+        lines.extend([f"This month includes {evaluation_count:,} evaluations. "
+                      "The charts below show the recorded result, purchase activity, and costs.", ""])
+    notes = ["## Observations and Next Steps", ""]
     for item in months:
-        lines.extend([
+        notes.extend([
             f"### {item['month']}", "",
             f"- **Finding:** Recorded net result after costs: {_format_money(item['realized_net_profit'])}; "
             f"recorded transaction costs: {_format_money(item['total_transaction_cost'])}.",
@@ -362,6 +348,7 @@ def build_markdown(
             "",
         ])
 
+    lines.extend(notes)
     lines.extend([
         "## Monthly Ledger",
         "",
@@ -382,17 +369,30 @@ def build_markdown(
         ]
         lines.append("| " + " | ".join(row) + " |")
     lines.append("")
+    lines.extend([
+        "## Evaluation Context", "",
+        "| Period | Version | Evaluation protocol | Months | Recorded validation days | Evaluations |",
+        "|---|---|---|---:|---:|---:|",
+        "| " + " | ".join([
+            f"{period['start_month']} to {period['end_month']}",
+            f"`{payload['public_revision']}`", f"`{payload['validation_protocol']}`",
+            _format_integer(period['month_count']), _format_integer(validation_days),
+            _format_integer(evaluation_count),
+        ]) + " |", "",
+    ])
+    lines.extend(definitions)
     if payload["warnings"]:
         lines.extend(["## Limitations", ""])
         lines.extend(f"- {warning}" for warning in payload["warnings"])
         lines.append("")
     lines.extend([
-        "## Interpretation boundary",
+        "## Reading These Results",
         "",
         "Net result, notional, capital, and transaction costs are historical-simulation "
         "measurements. Month-to-month comparisons are meaningful only when the public "
         "revision and validation protocol remain comparable. Missing values are shown "
-        "as unavailable rather than zero.",
+        "as unavailable rather than zero. Historical simulation is not actual execution; "
+        "profitability has not been established.",
         "",
     ])
     return "\n".join(lines).rstrip()

@@ -1,51 +1,36 @@
-# Stock Decision Research
+# Stock Decision System
 
-An independent research project exploring how an AI-assisted system can support observe, enter, hold, and exit decisions across trading days.
+A stock decision system I am building to connect observation, entry, holding, and exit decisions across trading days.
 
-> 這是一個個人股票決策系統研究專案，聚焦跨交易日的觀察、進場、持有與退出決策。此 repository 只保存可公開的彙總報告與圖表，不保存內部驗證資料。
+> 我開發的股票決策系統，將觀察、進場、持有與退出串成跨交易日的決策流程。這裡展示目前完成的能力、驗證結果，以及後續開發進度。
 
-## Current status
+## What I Have Built
 
-- Public revision: `research-v0.1`
-- Project stage: active research prototype
-- Primary analysis: monthly net result, capital usage, and transaction costs
-- Historical evaluation: in progress
-- Live deployment: not supported
-- Profitability: not established
-
-## Research view
+- A decision flow that carries state across trading days.
+- Historical replay to evaluate decisions over multi-day tasks.
+- Result summaries that account for recorded transaction costs and capital usage.
+- Monthly charts and reports for reviewing development progress over time.
 
 ```text
 Observe -> Enter -> Hold -> Exit
 ```
 
-## Research report
+## Results
 
-- [Generated research report](REPORT.md)
-- [Report input and publication boundary](reports/README.md)
+The first monthly evaluation covers September 2026. The recorded net result was **TWD −8,904**, including **TWD 8,904** in transaction costs, across 10 completed evaluations. This gives me an initial view of how the decision flow behaves and how costs affect the outcome.
 
-The private research system keeps canonical monthly validation results. Its exporter aggregates selected months in memory, removes private fields, and sends only a sanitized report payload to this repository's renderer. The renderer writes a Markdown summary and three static monthly charts:
+![Monthly net result after recorded costs](assets/charts/monthly-net-profit.svg)
 
-```text
-REPORT.md
-assets/charts/*.svg
-```
+[View the full results, cost breakdown, and observations →](REPORT.md)
 
-No copied monthly JSON or other intermediate data file is committed here. The public view intentionally uses only monthly coverage and financial aggregates: net result, gross buy notional, peak position capital, and transaction costs. Task outcomes, decisions, confidence values, Reward, and internal revision names never cross the public boundary.
+## What I Am Building Next
 
-## Repository structure
+- Extend evaluation across more months to see how consistently the system performs.
+- Compare net results alongside transaction costs and recorded capital usage.
+- Track changes across development versions using comparable evaluation settings.
 
-```text
-scripts/               Markdown builder and ECharts SVG renderer
-assets/charts/         Generated SVG charts displayed by REPORT.md
-REPORT.md              Generated research report
-reports/README.md      Input boundary and comparison rules
-```
+## About These Results
 
-`AGENTS.md` and `.private/` are intentionally excluded from Git because they contain local working rules and planning notes.
+The results come from historical simulation. The initial sample is small, and profitability has not been established. Evaluation scope and limitations are included in the [full report](REPORT.md#evaluation-context).
 
-## Public boundary
-
-This repository may contain validation coverage and aggregate historical-simulation result, capital, and cost statistics. It does not publish task outcomes, decision probabilities, Reward, raw market data, individual stock decisions, exact strategy rules, model weights, credentials, internal paths, or live-order capabilities.
-
-Historical simulation is not actual execution. This project is provided for research and engineering discussion only and is not financial advice or a claim of future profitability.
+This repository presents development results and aggregate measurements. The system implementation and detailed evaluation data are maintained separately.
