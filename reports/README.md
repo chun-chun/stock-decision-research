@@ -26,6 +26,8 @@ See [Research Reporting Workflow](WORKFLOW.md) for the monthly-first presentatio
 - A month is the primary trend unit.
 - Validation and evaluation counts are summed, financial flows are summed, and capital or single-order maxima remain maxima.
 - Missing data is shown as unavailable, never converted to zero.
+- Month values must be real calendar months in `YYYY-MM` form, and validation-day counts cannot exceed the number of calendar days in that month.
+- Transaction costs, purchase value, and recorded peak position capital must be non-negative when available. The largest single-order cost cannot exceed total transaction costs.
 - Periods spanning multiple internal revisions carry an explicit warning and are not described as one unchanged policy.
 - Historical simulation is not actual execution or evidence of future profitability.
 

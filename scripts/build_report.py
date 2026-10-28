@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import calendar
 import json
 import math
 import os
@@ -47,6 +48,13 @@ def _is_number(value: Any) -> bool:
         and not isinstance(value, bool)
         and math.isfinite(float(value))
     )
+
+
+def _calendar_month(value: Any) -> tuple[int, int] | None:
+    if not isinstance(value, str) or re.fullmatch(r"[0-9]{4}-(0[1-9]|1[0-2])", value) is None:
+        return None
+    year, month = value.split("-")
+    return int(year), int(month)
 
 
 def validate_payload(payload: Any) -> list[str]:
@@ -114,7 +122,8 @@ def validate_payload(payload: Any) -> list[str]:
             continue
         item_fields = set(item)
         month = item.get("month")
-        if not isinstance(month, str) or len(month) != 7 or month[4] != "-":
+        calendar_month = _calendar_month(month)
+        if calendar_month is None:
             errors.append(f"{prefix}.month must use YYYY-MM")
         elif month in seen_months:
             errors.append(f"duplicate month: {month}")
@@ -132,6 +141,14 @@ def validate_payload(payload: Any) -> list[str]:
             value = item[field]
             if not isinstance(value, int) or isinstance(value, bool) or value < 0:
                 errors.append(f"{prefix}.{field} must be a non-negative integer")
+        if (
+            calendar_month is not None
+            and isinstance(item["validation_days"], int)
+            and not isinstance(item["validation_days"], bool)
+            and item["validation_days"]
+            > calendar.monthrange(calendar_month[0], calendar_month[1])[1]
+        ):
+            errors.append(f"{prefix}.validation_days exceeds the calendar month")
         for field in (
             "total_transaction_cost",
             "max_order_transaction_cost",
@@ -141,6 +158,23 @@ def validate_payload(payload: Any) -> list[str]:
         ):
             if item[field] is not None and not _is_number(item[field]):
                 errors.append(f"{prefix}.{field} must be finite or null")
+        for field in (
+            "total_transaction_cost",
+            "max_order_transaction_cost",
+            "max_position_capital",
+            "buy_notional",
+        ):
+            if _is_number(item[field]) and float(item[field]) < 0:
+                errors.append(f"{prefix}.{field} must be non-negative or null")
+        if (
+            _is_number(item["total_transaction_cost"])
+            and _is_number(item["max_order_transaction_cost"])
+            and float(item["max_order_transaction_cost"])
+            > float(item["total_transaction_cost"])
+        ):
+            errors.append(
+                f"{prefix}.max_order_transaction_cost cannot exceed total_transaction_cost"
+            )
 
     sorted_months = sorted(seen_months)
     if isinstance(period, dict) and sorted_months:
