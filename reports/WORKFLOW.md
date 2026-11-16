@@ -10,10 +10,13 @@ As comparable months accumulate, the overall research summary becomes the primar
 2. When local research synchronization is enabled, read those saved results without rerunning the model.
 3. Aggregate and allowlist public fields before passing them to the report builder.
 4. Regenerate the selected monthly view and overall summary together.
+   The README Results section, REPORT.md, and three SVG charts use the same selected data. The complete month selection replaces the previous view; repeated updates do not append duplicate rows. Individual months remain sections of REPORT.md rather than separate stored monthly data files.
 5. Review the generated Markdown, charts, and proposed Git changes locally.
 6. The owner decides when to commit and upload to GitHub. Report generation does not automatically commit or push.
 
 Reprocessing a month replaces that month's selected result rather than appending a duplicate. Additional months extend the historical record. Corrections to published results must be explained and dated.
+
+Partial or unavailable decision results retain their selected month and explicit status; missing values are not estimated. Classification and scoring diagnostics remain in the private validation project. Without established comparability, multiple months are displayed separately without pooled financial results or a cumulative line.
 
 ## Presentation and comparison
 

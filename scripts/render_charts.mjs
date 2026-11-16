@@ -17,6 +17,7 @@ const payload = JSON.parse(input || '{}');
 const months = Array.isArray(payload.months) ? payload.months : [];
 months.sort((a, b) => a.month.localeCompare(b.month));
 const singleMonth = months.length === 1;
+const showCumulative = !singleMonth && payload.comparison_mode !== 'monthly_only';
 fs.mkdirSync(outputDir, { recursive: true });
 
 const colors = {
@@ -120,12 +121,12 @@ if (months.length) {
       'Net of recorded transaction costs | historical simulation',
     ),
     legend: {
-      data: singleMonth ? ['Monthly net result'] : ['Monthly net result', 'Cumulative net result'],
+      data: showCumulative ? ['Monthly net result', 'Cumulative net result'] : ['Monthly net result'],
       top: 76,
       right: 30,
       textStyle: { color: colors.ink },
     },
-    yAxis: singleMonth ? valueAxis('Net result after costs (TWD)', moneyAxis) : [
+    yAxis: !showCumulative ? valueAxis('Net result after costs (TWD)', moneyAxis) : [
       valueAxis('Monthly net result (TWD)', moneyAxis),
       {
         ...valueAxis('Cumulative (TWD)', moneyAxis),
@@ -152,7 +153,7 @@ if (months.length) {
           formatter: (params) => moneyAxis(Number(params.value)),
         },
       },
-      ...(!singleMonth ? [{
+      ...(showCumulative ? [{
         name: 'Cumulative net result',
         type: 'line',
         yAxisIndex: 1,

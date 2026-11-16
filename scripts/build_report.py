@@ -72,13 +72,15 @@ def validate_payload(payload: Any) -> list[str]:
     }
     errors: list[str] = []
     missing = sorted(required - set(payload))
-    unknown = sorted(set(payload) - required)
+    unknown = sorted(set(payload) - required - {'comparison_mode'})
     if missing:
         errors.append(f"missing fields: {', '.join(missing)}")
     if unknown:
         errors.append(f"unknown fields: {', '.join(unknown)}")
     if missing:
         return errors
+    if payload.get('comparison_mode', 'comparable') not in {'monthly_only', 'comparable'}:
+        errors.append('comparison_mode is invalid')
     if payload["schema_version"] != "1.2":
         errors.append("schema_version must be 1.2")
     if not isinstance(payload["public_revision"], str) or not payload["public_revision"].strip():
@@ -139,6 +141,8 @@ def validate_payload(payload: Any) -> list[str]:
             "evaluation_count",
         ):
             value = item[field]
+            if value is None:
+                continue
             if not isinstance(value, int) or isinstance(value, bool) or value < 0:
                 errors.append(f"{prefix}.{field} must be a non-negative integer")
         if (
@@ -273,9 +277,10 @@ def build_markdown(
 ) -> str:
     months = sorted(payload["months"], key=lambda item: item["month"])
     single_month = len(months) == 1
+    separate_months = not single_month and payload.get('comparison_mode') == 'monthly_only'
     period = payload["period"]
-    validation_days = sum(item["validation_days"] for item in months)
-    evaluation_count = sum(item["evaluation_count"] for item in months)
+    validation_days = sum(item['validation_days'] for item in months) if all(item['validation_days'] is not None for item in months) else None
+    evaluation_count = sum(item['evaluation_count'] for item in months) if all(item['evaluation_count'] is not None for item in months) else None
     net_profit = _complete_sum([item["realized_net_profit"] for item in months])
     transaction_cost = _complete_sum(
         [item["total_transaction_cost"] for item in months]
@@ -287,6 +292,13 @@ def build_markdown(
     max_order_cost = _available_max(
         [item["max_order_transaction_cost"] for item in months]
     )
+    if separate_months:
+        latest = months[-1]
+        net_profit = latest['realized_net_profit']
+        transaction_cost = latest['total_transaction_cost']
+        buy_notional = latest['buy_notional']
+        peak_capital = latest['max_position_capital']
+        max_order_cost = latest['max_order_transaction_cost']
     heading = (
         "# Layout Preview: Stock Decision System Results"
         if preview
@@ -305,7 +317,8 @@ def build_markdown(
     lines.extend([
         "Results from historical replay of cross-day stock decisions, including recorded transaction costs.",
         "",
-        f"## {months[0]['month']} Results" if single_month else "## Results Overview",
+        f"## {months[0]['month']} Results" if single_month else
+        f"## Latest Month — {months[-1]['month']}" if separate_months else "## Results Overview",
         "",
         "| Net result after costs | Total purchase value | Recorded peak position capital | Total transaction costs | Largest single-order cost |",
         "|---:|---:|---:|---:|---:|",
@@ -321,6 +334,10 @@ def build_markdown(
         "",
     ])
 
+    if separate_months:
+        lines.extend(['The overview shows the latest selected month only. Earlier months appear below; '
+                      'financial results are not pooled across unverified comparison settings.', ''])
+
     definitions = [
         "All monetary amounts are in TWD. Total purchase value is the sum of purchases "
         "during the period; it is not starting capital. Recorded peak position capital "
@@ -331,7 +348,7 @@ def build_markdown(
         "",
     ]
     if single_month:
-        lines.extend([f"This month includes {evaluation_count:,} evaluations. "
+        lines.extend([f"Recorded evaluation count: {_format_integer(evaluation_count)}. "
                       "The charts below show the recorded result, purchase activity, and costs.", ""])
     notes = ["## Observations and Next Steps", ""]
     for item in months:
@@ -339,7 +356,7 @@ def build_markdown(
             f"### {item['month']}", "",
             f"- **Finding:** Recorded net result after costs: {_format_money(item['realized_net_profit'])}; "
             f"recorded transaction costs: {_format_money(item['total_transaction_cost'])}.",
-            f"- **Limitation:** This month's summary contains {item['evaluation_count']:,} evaluations "
+            f"- **Limitation:** Recorded evaluation count: {_format_integer(item['evaluation_count'])} "
             f"with status `{item['status']}`. These aggregates alone do not establish sample "
             "representativeness or persistent performance. See the report limitations for context.",
             "- **Next step:** Compare the next available month under a compatible revision and "
@@ -352,8 +369,8 @@ def build_markdown(
             "monthly-net-profit.svg",
             "## 1. Monthly Net Result",
             "Net result after recorded costs for this month."
-            if single_month else "Compare monthly net results after recorded costs across compatible months.",
-            "Monthly net result" if single_month else "Monthly net result and cumulative net result",
+            if single_month else "Recorded monthly net results after costs. Changes alone do not establish improvement.",
+            "Monthly net result" if single_month or payload.get('comparison_mode') == 'monthly_only' else "Monthly net result and cumulative net result",
         ),
         (
             "capital-usage.svg",
@@ -449,6 +466,65 @@ def _atomic_write(path: Path, text: str) -> None:
             os.unlink(temporary_name)
 
 
+def publish_report(payload: dict[str, Any], output_root: Path, *, update_readme: bool) -> Path:
+    """Prepare a complete report before replacing any visible output files."""
+    report_path = output_root / 'REPORT.md'
+    readme_path = output_root / 'README.md'
+    readme = readme_path.read_text(encoding='utf-8') if update_readme else None
+    if readme is not None and not re.search(r'^## Results\n.*?(?=^## |\Z)', readme, re.M | re.S):
+        raise ValueError('README.md is missing its managed Results section')
+    prepared = dict(payload, warnings=list(payload['warnings']))
+    old_report = report_path.read_text(encoding='utf-8') if report_path.exists() else ''
+    # Preserve dated correction notices in the generated report without publishing source data.
+    prepared['warnings'].extend(line[2:] for line in old_report.splitlines()
+                                if line.startswith('- Correction recorded ') and line[2:] not in prepared['warnings'])
+    for item in payload['months']:
+        old_row = next((line for line in old_report.splitlines() if line.startswith(f"| {item['month']} |")), None)
+        if old_row is None:
+            continue
+        cells = [cell.strip() for cell in old_row.strip('|').split('|')]
+        current = [item['month'], item['status'], _format_integer(item['validation_days']),
+                   _format_integer(item['evaluation_count']), _format_money(item['realized_net_profit']),
+                   _format_money(item['buy_notional']), _format_money(item['max_position_capital']),
+                   _format_money(item['total_transaction_cost']), _format_money(item['max_order_transaction_cost'])]
+        if cells != current:
+            note = f"Correction recorded {payload['generated_at'][:10]}: {item['month']} aggregates were replaced with the selected saved evaluation. Earlier figures are superseded."
+            if note not in prepared['warnings']:
+                prepared['warnings'].append(note)
+    with tempfile.TemporaryDirectory(prefix='research-report-') as directory:
+        staging = Path(directory)
+        charts = build_charts(prepared, charts_dir=staging / 'assets' / 'charts')
+        outputs = {report_path: build_markdown(prepared, charts)}
+        outputs.update({output_root / 'assets' / 'charts' / name:
+                        (staging / 'assets' / 'charts' / name).read_text(encoding='utf-8')
+                        for name in charts})
+        if readme is not None:
+            latest = max(payload['months'], key=lambda item: item['month'])
+            available_months = ', '.join(item['month'] for item in sorted(payload['months'], key=lambda item: item['month']))
+            section = ('## Results\n\n'
+                       f"Latest evaluation: **{latest['month']}**. Recorded net result: **{_format_money(latest['realized_net_profit'])}**, "
+                       f"including **{_format_money(latest['total_transaction_cost'])}** in transaction costs. "
+                       f"Recorded evaluation count: **{_format_integer(latest['evaluation_count'])}**.\n\n"
+                       f"Available months: {available_months}. Each month is reported with its evaluation scope and limitations.\n\n"
+                       '![Monthly net result after recorded costs](assets/charts/monthly-net-profit.svg)\n\n'
+                       '[View the full results, cost breakdown, and observations →](REPORT.md)\n\n')
+            outputs[readme_path] = re.sub(r'^## Results\n.*?(?=^## |\Z)', lambda match: section, readme, count=1, flags=re.M | re.S)
+        previous = {path: path.read_text(encoding='utf-8') if path.exists() else None for path in outputs}
+        written = []
+        try:
+            for path, content in outputs.items():
+                written.append(path)
+                _atomic_write(path, content.rstrip())
+        except Exception:
+            for path in reversed(written):
+                if previous[path] is None:
+                    path.unlink(missing_ok=True)
+                else:
+                    _atomic_write(path, previous[path].rstrip())
+            raise
+    return report_path
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -482,11 +558,11 @@ def main(argv: list[str] | None = None) -> int:
         charts_dir = (
             PREVIEW_ROOT / "assets" / "charts" if args.preview else output_root / "assets" / "charts"
         )
-        charts = build_charts(payload, charts_dir=charts_dir)
-        _atomic_write(
-            report_path,
-            build_markdown(payload, charts, preview=args.preview),
-        )
+        if args.preview:
+            charts = build_charts(payload, charts_dir=charts_dir)
+            _atomic_write(report_path, build_markdown(payload, charts, preview=True))
+        else:
+            report_path = publish_report(payload, output_root, update_readme=not args.output_subdir)
         if args.output_subdir:
             lines = ["# Stock Decision Research", "", "> Local historical-simulation summaries. Not actual execution or evidence of future profitability.", "", "## Research Series", "", "| Series | Report |", "| --- | --- |"]
             for path in sorted((ROOT / "reports").glob("*/REPORT.md")):

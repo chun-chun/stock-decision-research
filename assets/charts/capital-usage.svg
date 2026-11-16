@@ -1,25 +1,30 @@
 <svg width="1120" height="440" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" version="1.1" baseProfile="full" viewBox="0 0 1120 440">
 <rect width="1120" height="440" x="0" y="0" fill="#fbf8f0"></rect>
 <path d="M92 368.5L1034 368.5" fill="none" pointer-events="visible" stroke="#d8dfda" stroke-dasharray="4,2" class="zr1-cls-3"></path>
-<path d="M92 330.5L1034 330.5" fill="none" pointer-events="visible" stroke="#d8dfda" stroke-dasharray="4,2" class="zr1-cls-3"></path>
-<path d="M92 292.5L1034 292.5" fill="none" pointer-events="visible" stroke="#d8dfda" stroke-dasharray="4,2" class="zr1-cls-3"></path>
-<path d="M92 255.5L1034 255.5" fill="none" pointer-events="visible" stroke="#d8dfda" stroke-dasharray="4,2" class="zr1-cls-3"></path>
-<path d="M92 217.5L1034 217.5" fill="none" pointer-events="visible" stroke="#d8dfda" stroke-dasharray="4,2" class="zr1-cls-3"></path>
-<path d="M92 179.5L1034 179.5" fill="none" pointer-events="visible" stroke="#d8dfda" stroke-dasharray="4,2" class="zr1-cls-3"></path>
+<path d="M92 335.5L1034 335.5" fill="none" pointer-events="visible" stroke="#d8dfda" stroke-dasharray="4,2" class="zr1-cls-3"></path>
+<path d="M92 303.5L1034 303.5" fill="none" pointer-events="visible" stroke="#d8dfda" stroke-dasharray="4,2" class="zr1-cls-3"></path>
+<path d="M92 271.5L1034 271.5" fill="none" pointer-events="visible" stroke="#d8dfda" stroke-dasharray="4,2" class="zr1-cls-3"></path>
+<path d="M92 239.5L1034 239.5" fill="none" pointer-events="visible" stroke="#d8dfda" stroke-dasharray="4,2" class="zr1-cls-3"></path>
+<path d="M92 206.5L1034 206.5" fill="none" pointer-events="visible" stroke="#d8dfda" stroke-dasharray="4,2" class="zr1-cls-3"></path>
+<path d="M92 174.5L1034 174.5" fill="none" pointer-events="visible" stroke="#d8dfda" stroke-dasharray="4,2" class="zr1-cls-3"></path>
 <path d="M92 142.5L1034 142.5" fill="none" pointer-events="visible" stroke="#d8dfda" stroke-dasharray="4,2" class="zr1-cls-3"></path>
 <text dominant-baseline="central" text-anchor="middle" style="font-size:12px;font-family:sans-serif;" xml:space="preserve" y="-14" transform="translate(92 127)" fill="#617276">Amount (TWD)</text>
 <text dominant-baseline="central" text-anchor="middle" style="font-size:12px;font-family:sans-serif;" y="6" transform="translate(563 402)" fill="#617276">Month</text>
 <path d="M92 368.5L1034 368.5" fill="none" pointer-events="visible" stroke="#617276" stroke-linecap="round" class="zr1-cls-3"></path>
 <text dominant-baseline="central" text-anchor="end" style="font-size:12px;font-family:sans-serif;" transform="translate(84 368)" fill="#183338">0</text>
-<text dominant-baseline="central" text-anchor="end" style="font-size:12px;font-family:sans-serif;" transform="translate(84 330.3333)" fill="#183338">300K</text>
-<text dominant-baseline="central" text-anchor="end" style="font-size:12px;font-family:sans-serif;" transform="translate(84 292.6667)" fill="#183338">600K</text>
-<text dominant-baseline="central" text-anchor="end" style="font-size:12px;font-family:sans-serif;" transform="translate(84 255)" fill="#183338">900K</text>
-<text dominant-baseline="central" text-anchor="end" style="font-size:12px;font-family:sans-serif;" transform="translate(84 217.3333)" fill="#183338">1.2M</text>
-<text dominant-baseline="central" text-anchor="end" style="font-size:12px;font-family:sans-serif;" transform="translate(84 179.6667)" fill="#183338">1.5M</text>
-<text dominant-baseline="central" text-anchor="end" style="font-size:12px;font-family:sans-serif;" transform="translate(84 142)" fill="#183338">1.8M</text>
-<text dominant-baseline="central" text-anchor="middle" style="font-size:12px;font-family:sans-serif;" y="6" transform="translate(563 380)" fill="#183338">2026-09</text>
-<path d="M506.1 176.9L556.1 176.9A4 4 0 0 1 560.1 180.9L560.1 368L502.1 368L502.1 180.9A4 4 0 0 1 506.1 176.9Z" fill="#426f86" ecmeta_series_index="0" ecmeta_data_index="0" ecmeta_ssr_type="chart" class="zr1-cls-4"></path>
-<path d="M565.9 368l58 0l0 -101.7l-58 0Z" fill="#cf9433" ecmeta_series_index="1" ecmeta_data_index="0" ecmeta_ssr_type="chart" class="zr1-cls-5"></path>
+<text dominant-baseline="central" text-anchor="end" style="font-size:12px;font-family:sans-serif;" transform="translate(84 335.7143)" fill="#183338">200K</text>
+<text dominant-baseline="central" text-anchor="end" style="font-size:12px;font-family:sans-serif;" transform="translate(84 303.4286)" fill="#183338">400K</text>
+<text dominant-baseline="central" text-anchor="end" style="font-size:12px;font-family:sans-serif;" transform="translate(84 271.1429)" fill="#183338">600K</text>
+<text dominant-baseline="central" text-anchor="end" style="font-size:12px;font-family:sans-serif;" transform="translate(84 238.8571)" fill="#183338">800K</text>
+<text dominant-baseline="central" text-anchor="end" style="font-size:12px;font-family:sans-serif;" transform="translate(84 206.5714)" fill="#183338">1.0M</text>
+<text dominant-baseline="central" text-anchor="end" style="font-size:12px;font-family:sans-serif;" transform="translate(84 174.2857)" fill="#183338">1.2M</text>
+<text dominant-baseline="central" text-anchor="end" style="font-size:12px;font-family:sans-serif;" transform="translate(84 142)" fill="#183338">1.4M</text>
+<text dominant-baseline="central" text-anchor="middle" style="font-size:12px;font-family:sans-serif;" y="6" transform="translate(327.5 380)" fill="#183338">2026-09</text>
+<text dominant-baseline="central" text-anchor="middle" style="font-size:12px;font-family:sans-serif;" y="6" transform="translate(798.5 380)" fill="#183338">2026-10</text>
+<path d="M270.6 170.8L320.6 170.8A4 4 0 0 1 324.6 174.8L324.6 368L266.6 368L266.6 174.8A4 4 0 0 1 270.6 170.8Z" fill="#426f86" ecmeta_series_index="0" ecmeta_data_index="0" ecmeta_ssr_type="chart" class="zr1-cls-4"></path>
+<path d="M741.6 178.1L791.6 178.1A4 4 0 0 1 795.6 182.1L795.6 368L737.6 368L737.6 182.1A4 4 0 0 1 741.6 178.1Z" fill="#426f86" ecmeta_series_index="0" ecmeta_data_index="1" ecmeta_ssr_type="chart" class="zr1-cls-4"></path>
+<path d="M330.4 368l58 0l0 -39.4l-58 0Z" fill="#cf9433" ecmeta_series_index="1" ecmeta_data_index="0" ecmeta_ssr_type="chart" class="zr1-cls-5"></path>
+<path d="M801.4 368l58 0l0 -23.4l-58 0Z" fill="#cf9433" ecmeta_series_index="1" ecmeta_data_index="1" ecmeta_ssr_type="chart" class="zr1-cls-5"></path>
 <path d="M-5 -5l354.6 0l0 24l-354.6 0Z" transform="translate(740.4 81)" fill="rgb(0,0,0)" fill-opacity="0" stroke="#b7b9be" stroke-width="0" class="zr1-cls-3"></path>
 <path d="M3.5 0L21.5 0A3.5 3.5 0 0 1 25 3.5L25 10.5A3.5 3.5 0 0 1 21.5 14L3.5 14A3.5 3.5 0 0 1 0 10.5L0 3.5A3.5 3.5 0 0 1 3.5 0Z" transform="translate(740.4 81)" fill="#426f86" ecmeta_series_index="0" ecmeta_data_index="0" ecmeta_ssr_type="legend" ecmeta_silent="true" class="zr1-cls-3"></path>
 <text dominant-baseline="central" text-anchor="start" style="font-size:12px;font-family:sans-serif;" xml:space="preserve" x="30" y="7" transform="translate(740.4 81)" fill="#183338">Total purchase value</text>

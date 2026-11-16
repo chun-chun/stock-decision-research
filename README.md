@@ -17,7 +17,9 @@ Observe -> Enter -> Hold -> Exit
 
 ## Results
 
-The first monthly evaluation covers September 2026. The recorded net result was **TWD −8,904**, including **TWD 8,904** in transaction costs, across 10 evaluations. This gives me an initial view of how the decision flow behaves and how costs affect the outcome.
+Latest evaluation: **2026-10**. Recorded net result: **TWD -30,278**, including **TWD 6,778** in transaction costs. Recorded evaluation count: **12**.
+
+Available months: 2026-09, 2026-10. Each month is reported with its evaluation scope and limitations.
 
 ![Monthly net result after recorded costs](assets/charts/monthly-net-profit.svg)
 
